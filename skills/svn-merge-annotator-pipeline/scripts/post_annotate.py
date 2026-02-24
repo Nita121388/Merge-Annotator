@@ -1,7 +1,37 @@
 import argparse
 import json
+import os
 import sys
 import urllib.request
+
+
+def engine_config_path():
+    local_appdata = os.getenv("LOCALAPPDATA")
+    if not local_appdata:
+        user_profile = os.getenv("USERPROFILE")
+        if user_profile:
+            local_appdata = os.path.join(user_profile, "AppData", "Local")
+    if not local_appdata:
+        return ""
+    return os.path.join(
+        local_appdata, "svn-merge-annotator", "engine", "engine.json"
+    )
+
+
+def load_engine_config():
+    path = engine_config_path()
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+ENGINE_CONFIG = load_engine_config()
+DEFAULT_API_BASE = (ENGINE_CONFIG.get("api_base") or "").strip() or "http://localhost:18000"
 
 
 def request_json(method, url, payload):
@@ -20,7 +50,7 @@ def load_payload_file(path):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--api-base", default="http://localhost:8000")
+    parser.add_argument("--api-base", default=DEFAULT_API_BASE)
     parser.add_argument("--analysis-id")
     parser.add_argument("--path")
     parser.add_argument("--start", type=int)

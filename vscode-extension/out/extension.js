@@ -857,8 +857,77 @@ function activate(context) {
         const suffix = detail ? ` | ${JSON.stringify(detail)}` : "";
         output.appendLine(`[${timestamp}] [${level}] ${message}${suffix}`);
     }
+    function getLocalAppData() {
+        const local = process.env.LOCALAPPDATA;
+        if (local)
+            return local;
+        const userProfile = process.env.USERPROFILE;
+        if (userProfile) {
+            return path.join(userProfile, "AppData", "Local");
+        }
+        return undefined;
+    }
+    function getEngineConfigPath() {
+        const local = getLocalAppData();
+        if (!local)
+            return undefined;
+        return path.join(local, "svn-merge-annotator", "engine", "engine.json");
+    }
+    function readEngineConfig() {
+        const configPath = getEngineConfigPath();
+        if (!configPath || !fs.existsSync(configPath))
+            return undefined;
+        try {
+            const raw = fs.readFileSync(configPath, "utf-8").trim();
+            if (!raw)
+                return undefined;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== "object")
+                return undefined;
+            const config = {};
+            if (typeof parsed.api_base === "string")
+                config.api_base = parsed.api_base;
+            if (typeof parsed.ui_base === "string")
+                config.ui_base = parsed.ui_base;
+            if (typeof parsed.engine_root === "string")
+                config.engine_root = parsed.engine_root;
+            if (typeof parsed.start_command === "string")
+                config.start_command = parsed.start_command;
+            if (typeof parsed.updated_at === "string")
+                config.updated_at = parsed.updated_at;
+            return config;
+        }
+        catch (err) {
+            logMessage("WARN", "engine.json 读取失败", { error: String(err) });
+            return undefined;
+        }
+    }
+    function writeEngineConfig(next) {
+        const configPath = getEngineConfigPath();
+        if (!configPath)
+            return;
+        try {
+            fs.mkdirSync(path.dirname(configPath), { recursive: true });
+            const payload = {
+                api_base: next.api_base || "",
+                ui_base: next.ui_base || "",
+                engine_root: next.engine_root || "",
+                start_command: next.start_command || "",
+                updated_at: next.updated_at || new Date().toISOString(),
+            };
+            fs.writeFileSync(configPath, JSON.stringify(payload, null, 2), "utf-8");
+        }
+        catch (err) {
+            logMessage("WARN", "engine.json 写入失败", { error: String(err) });
+        }
+    }
     function getBackendUrl() {
-        return (getConfig("backendUrl", "http://localhost:8000") || "").replace(/\/+$/, "");
+        const engineConfig = readEngineConfig();
+        const fromEngine = (engineConfig?.api_base || "").trim();
+        const fallback = (getConfig("backendUrl", "http://localhost:18000") || "")
+            .trim();
+        const url = fromEngine || fallback;
+        return url.replace(/\/+$/, "");
     }
     function setBackendStatus(status, detail) {
         backendStatus = status;
@@ -910,6 +979,11 @@ function activate(context) {
         }
     }
     async function resolveBackendRoot(allowPick) {
+        const engineConfig = readEngineConfig();
+        const engineRoot = (engineConfig?.engine_root || "").trim();
+        if (engineRoot) {
+            return engineRoot;
+        }
         const config = vscode.workspace.getConfiguration("svnMergeAnnotator");
         let backendRoot = (config.get("backendRoot", "") || "").trim();
         if (!backendRoot && allowPick) {
@@ -1047,8 +1121,10 @@ function activate(context) {
                 vscode.window.showErrorMessage("后端目录不存在，请检查配置");
                 return;
             }
+            const engineConfig = readEngineConfig() || {};
             const customCommand = (getConfig("backendStartCommand", "") || "").trim();
-            let command = customCommand;
+            const engineCommand = (engineConfig.start_command || "").trim();
+            let command = customCommand || engineCommand;
             let useScript = false;
             if (!command) {
                 if (process.platform === "win32") {
@@ -1060,9 +1136,21 @@ function activate(context) {
                 }
                 if (!command) {
                     command =
-                        "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000";
+                        "python -m uvicorn app.main:app --host 0.0.0.0 --port 18000";
                 }
             }
+            const rawBackendUrl = (getConfig("backendUrl", "http://localhost:18000") ||
+                "").trim();
+            const apiBase = rawBackendUrl || (engineConfig.api_base || "").trim() || "http://localhost:18000";
+            const uiBase = (engineConfig.ui_base || "").trim() || "http://localhost:5173";
+            writeEngineConfig({
+                ...engineConfig,
+                engine_root: backendRoot,
+                api_base: apiBase,
+                ui_base: uiBase,
+                start_command: command,
+                updated_at: new Date().toISOString(),
+            });
             logMessage("INFO", "startBackend: spawn", {
                 command,
                 cwd: backendRoot,
@@ -1411,7 +1499,7 @@ function activate(context) {
             return;
         state.annotationIndexLoading = true;
         updateFilesViewMessage();
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         const nextIndex = new Map();
         const nextSummary = new Map();
         let cancelled = false;
@@ -1729,7 +1817,7 @@ function activate(context) {
             preview: false,
             preserveFocus: false,
         });
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         const detail = await getFileDetail(relPath, client);
         state.fileDetailByPath.set(doc.fileName, detail);
         applyDecorationsForEditor(editor, detail);
@@ -1858,7 +1946,7 @@ function activate(context) {
             merge: mergeDir,
             base: baseDir || "",
         });
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         const payload = {
             branch_dir: branchDir,
             trunk_dir: trunkDir,
@@ -1919,7 +2007,7 @@ function activate(context) {
         });
         if (!input)
             return;
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         state.analysisId = input.trim();
         try {
             await loadFiles(state.analysisId, client);
@@ -1934,7 +2022,7 @@ function activate(context) {
             vscode.window.showErrorMessage("尚未加载分析ID");
             return;
         }
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         try {
             await loadFiles(state.analysisId, client);
         }
@@ -1957,7 +2045,7 @@ function activate(context) {
             return;
         }
         state.notesLoading = true;
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         const notesByRelPath = new Map();
         const annotationIndex = new Map();
         const summaryIndex = new Map();
@@ -2019,7 +2107,7 @@ function activate(context) {
         }
     }
     async function showHistory() {
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         let history = [];
         try {
             const limit = Math.max(1, getConfig("analysisHistoryLimit", 20));
@@ -2079,7 +2167,7 @@ function activate(context) {
                 disposeAll();
                 return;
             }
-            const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+            const client = new BackendClient(getBackendUrl());
             state.analysisId = pick.value;
             try {
                 await loadFiles(state.analysisId, client);
@@ -2268,7 +2356,7 @@ function activate(context) {
             source: "manual",
             updated_at: new Date().toISOString(),
         };
-        const client = new BackendClient(getConfig("backendUrl", "http://localhost:8000"));
+        const client = new BackendClient(getBackendUrl());
         try {
             await client.annotate({
                 analysis_id: state.analysisId,

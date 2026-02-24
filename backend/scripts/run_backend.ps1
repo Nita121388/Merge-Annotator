@@ -1,6 +1,6 @@
 param(
   [string]$BindHost = "0.0.0.0",
-  [int]$Port = 8000,
+  [int]$Port = 18000,
   [switch]$Foreground
 )
 

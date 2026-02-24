@@ -93,7 +93,7 @@
 
 ## 7. 配置需求
 建议加入 VSCode Settings：
-- backendUrl（默认 http://localhost:8000）
+- backendUrl（默认 http://localhost:18000）
 - mergeDir / trunkDir / branchDir / baseDir（可持久化）
 - showCommonLines（默认 false）
 

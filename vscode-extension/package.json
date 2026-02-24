@@ -179,7 +179,7 @@
       "properties": {
         "svnMergeAnnotator.backendUrl": {
           "type": "string",
-          "default": "http://localhost:8000",
+          "default": "http://localhost:18000",
           "description": "后端服务地址"
         },
         "svnMergeAnnotator.backendRoot": {

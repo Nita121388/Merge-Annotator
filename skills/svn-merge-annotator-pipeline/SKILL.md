@@ -34,6 +34,8 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 - Optional: --hide-revs to hide revision numbers in feature list
 
 ## 脚本位置
+- 本地引擎配置统一写入：%LOCALAPPDATA%\\svn-merge-annotator\\engine\\engine.json
+- 若本地服务未启动，会尝试通过 `npx --yes @chemclin/svn-merge-annotator ensure` 自动安装/启动。
 - 脚本文件：C:\Users\chemclin\.codex\skills\svn-merge-annotator-pipeline\scripts\run_pipeline.py
 - 批注写回脚本：C:\Users\chemclin\.codex\skills\svn-merge-annotator-pipeline\scripts\post_annotate.py（UTF-8 写回 /api/ai/annotate，避免中文乱码）
 - 建议在技能目录下执行，或在命令里使用该脚本的绝对路径。

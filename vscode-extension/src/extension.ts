@@ -162,6 +162,14 @@ type AIAnnotateRequest = {
   items: AIAnnotateItem[];
 };
 
+type EngineConfig = {
+  api_base?: string;
+  ui_base?: string;
+  engine_root?: string;
+  start_command?: string;
+  updated_at?: string;
+};
+
 const LAST_DIRS_KEY = "lastDirs";
 const LAST_ANALYSIS_ID_KEY = "lastAnalysisId";
 
@@ -1100,11 +1108,71 @@ export function activate(context: vscode.ExtensionContext) {
     output.appendLine(`[${timestamp}] [${level}] ${message}${suffix}`);
   }
 
+  function getLocalAppData() {
+    const local = process.env.LOCALAPPDATA;
+    if (local) return local;
+    const userProfile = process.env.USERPROFILE;
+    if (userProfile) {
+      return path.join(userProfile, "AppData", "Local");
+    }
+    return undefined;
+  }
+
+  function getEngineConfigPath() {
+    const local = getLocalAppData();
+    if (!local) return undefined;
+    return path.join(local, "svn-merge-annotator", "engine", "engine.json");
+  }
+
+  function readEngineConfig(): EngineConfig | undefined {
+    const configPath = getEngineConfigPath();
+    if (!configPath || !fs.existsSync(configPath)) return undefined;
+    try {
+      const raw = fs.readFileSync(configPath, "utf-8").trim();
+      if (!raw) return undefined;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== "object") return undefined;
+      const config: EngineConfig = {};
+      if (typeof parsed.api_base === "string") config.api_base = parsed.api_base;
+      if (typeof parsed.ui_base === "string") config.ui_base = parsed.ui_base;
+      if (typeof parsed.engine_root === "string")
+        config.engine_root = parsed.engine_root;
+      if (typeof parsed.start_command === "string")
+        config.start_command = parsed.start_command;
+      if (typeof parsed.updated_at === "string")
+        config.updated_at = parsed.updated_at;
+      return config;
+    } catch (err) {
+      logMessage("WARN", "engine.json 读取失败", { error: String(err) });
+      return undefined;
+    }
+  }
+
+  function writeEngineConfig(next: EngineConfig) {
+    const configPath = getEngineConfigPath();
+    if (!configPath) return;
+    try {
+      fs.mkdirSync(path.dirname(configPath), { recursive: true });
+      const payload = {
+        api_base: next.api_base || "",
+        ui_base: next.ui_base || "",
+        engine_root: next.engine_root || "",
+        start_command: next.start_command || "",
+        updated_at: next.updated_at || new Date().toISOString(),
+      };
+      fs.writeFileSync(configPath, JSON.stringify(payload, null, 2), "utf-8");
+    } catch (err) {
+      logMessage("WARN", "engine.json 写入失败", { error: String(err) });
+    }
+  }
+
   function getBackendUrl() {
-    return (getConfig("backendUrl", "http://localhost:8000") || "").replace(
-      /\/+$/,
-      ""
-    );
+    const engineConfig = readEngineConfig();
+    const fromEngine = (engineConfig?.api_base || "").trim();
+    const fallback = (getConfig("backendUrl", "http://localhost:18000") || "")
+      .trim();
+    const url = fromEngine || fallback;
+    return url.replace(/\/+$/, "");
   }
 
   function setBackendStatus(status: BackendStatus, detail?: string) {
@@ -1157,6 +1225,11 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   async function resolveBackendRoot(allowPick: boolean) {
+    const engineConfig = readEngineConfig();
+    const engineRoot = (engineConfig?.engine_root || "").trim();
+    if (engineRoot) {
+      return engineRoot;
+    }
     const config = vscode.workspace.getConfiguration("svnMergeAnnotator");
     let backendRoot = (config.get<string>("backendRoot", "") || "").trim();
     if (!backendRoot && allowPick) {
@@ -1306,8 +1379,10 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      const engineConfig: EngineConfig = readEngineConfig() || {};
       const customCommand = (getConfig("backendStartCommand", "") || "").trim();
-      let command = customCommand;
+      const engineCommand = (engineConfig.start_command || "").trim();
+      let command = customCommand || engineCommand;
       let useScript = false;
       if (!command) {
         if (process.platform === "win32") {
@@ -1319,9 +1394,24 @@ export function activate(context: vscode.ExtensionContext) {
         }
         if (!command) {
           command =
-            "python -m uvicorn app.main:app --host 0.0.0.0 --port 8000";
+            "python -m uvicorn app.main:app --host 0.0.0.0 --port 18000";
         }
       }
+
+      const rawBackendUrl = (getConfig("backendUrl", "http://localhost:18000") ||
+        "").trim();
+      const apiBase =
+        rawBackendUrl || (engineConfig.api_base || "").trim() || "http://localhost:18000";
+      const uiBase =
+        (engineConfig.ui_base || "").trim() || "http://localhost:5173";
+      writeEngineConfig({
+        ...engineConfig,
+        engine_root: backendRoot,
+        api_base: apiBase,
+        ui_base: uiBase,
+        start_command: command,
+        updated_at: new Date().toISOString(),
+      });
 
       logMessage("INFO", "startBackend: spawn", {
         command,
@@ -1718,9 +1808,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (!filesToScan.length) return;
     state.annotationIndexLoading = true;
     updateFilesViewMessage();
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     const nextIndex = new Map<string, boolean>();
     const nextSummary = new Map<string, FileSummaryStat>();
     let cancelled = false;
@@ -2043,9 +2131,7 @@ export function activate(context: vscode.ExtensionContext) {
       preserveFocus: false,
     });
 
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     const detail = await getFileDetail(relPath, client);
     state.fileDetailByPath.set(doc.fileName, detail);
     applyDecorationsForEditor(editor, detail);
@@ -2195,9 +2281,7 @@ export function activate(context: vscode.ExtensionContext) {
       base: baseDir || "",
     });
 
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     const payload: Record<string, unknown> = {
       branch_dir: branchDir,
       trunk_dir: trunkDir,
@@ -2262,9 +2346,7 @@ export function activate(context: vscode.ExtensionContext) {
       value: lastId,
     });
     if (!input) return;
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     state.analysisId = input.trim();
     try {
       await loadFiles(state.analysisId, client);
@@ -2279,9 +2361,7 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.showErrorMessage("尚未加载分析ID");
       return;
     }
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     try {
       await loadFiles(state.analysisId, client);
     } catch (err) {
@@ -2304,9 +2384,7 @@ export function activate(context: vscode.ExtensionContext) {
       return;
     }
     state.notesLoading = true;
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     const notesByRelPath = new Map<string, Block[]>();
     const annotationIndex = new Map<string, boolean>();
     const summaryIndex = new Map<string, FileSummaryStat>();
@@ -2375,9 +2453,7 @@ export function activate(context: vscode.ExtensionContext) {
   }
 
   async function showHistory() {
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     let history: HistoryItem[] = [];
     try {
       const limit = Math.max(1, getConfig("analysisHistoryLimit", 20));
@@ -2444,9 +2520,7 @@ export function activate(context: vscode.ExtensionContext) {
         disposeAll();
         return;
       }
-      const client = new BackendClient(
-        getConfig("backendUrl", "http://localhost:8000")
-      );
+      const client = new BackendClient(getBackendUrl());
       state.analysisId = pick.value;
       try {
         await loadFiles(state.analysisId, client);
@@ -2659,9 +2733,7 @@ export function activate(context: vscode.ExtensionContext) {
       source: "manual",
       updated_at: new Date().toISOString(),
     };
-    const client = new BackendClient(
-      getConfig("backendUrl", "http://localhost:8000")
-    );
+    const client = new BackendClient(getBackendUrl());
     try {
       await client.annotate({
         analysis_id: state.analysisId,

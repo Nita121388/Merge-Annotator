@@ -41,7 +41,7 @@ def build_explain(block):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--analysis", required=True)
-    parser.add_argument("--api-base", default="http://localhost:8000")
+    parser.add_argument("--api-base", default="http://localhost:18000")
     parser.add_argument("--max-blocks", type=int, default=50)
     args = parser.parse_args()
 

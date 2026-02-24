@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -10,6 +11,62 @@ import urllib.request
 import webbrowser
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
+
+
+def engine_config_path():
+    local_appdata = os.getenv("LOCALAPPDATA")
+    if not local_appdata:
+        user_profile = os.getenv("USERPROFILE")
+        if user_profile:
+            local_appdata = os.path.join(user_profile, "AppData", "Local")
+    if not local_appdata:
+        return ""
+    return os.path.join(
+        local_appdata, "svn-merge-annotator", "engine", "engine.json"
+    )
+
+
+def load_engine_config():
+    path = engine_config_path()
+    if not path or not os.path.exists(path):
+        return {}
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+ENGINE_CONFIG = load_engine_config()
+DEFAULT_API_BASE = (ENGINE_CONFIG.get("api_base") or "").strip() or "http://localhost:18000"
+DEFAULT_UI_BASE = (ENGINE_CONFIG.get("ui_base") or "").strip() or "http://localhost:5173"
+
+
+def cli_has_arg(flag):
+    return flag in sys.argv
+
+
+def run_npx_ensure():
+    cmd = os.getenv(
+        "SVN_MERGE_ANNOTATOR_NPX",
+        "npx --yes @chemclin/svn-merge-annotator ensure",
+    )
+    try:
+        result = subprocess.run(cmd, shell=True)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
+def ensure_engine_available(api_base):
+    if health_check(api_base):
+        return True
+    print("分析服务不可用，尝试通过 npx 启动本地引擎...", file=sys.stderr)
+    ok = run_npx_ensure()
+    if not ok:
+        return False
+    return health_check(api_base)
 
 
 def request_json(method, url, payload=None, timeout=None):
@@ -609,8 +666,8 @@ def main():
     parser.add_argument("--show-files", action="store_true")
     parser.add_argument("--show-revs", action="store_true")
     parser.add_argument("--hide-revs", action="store_true")
-    parser.add_argument("--api-base", default="http://localhost:8000")
-    parser.add_argument("--ui-base", default="http://localhost:5173")
+    parser.add_argument("--api-base", default=DEFAULT_API_BASE)
+    parser.add_argument("--ui-base", default=DEFAULT_UI_BASE)
     args = parser.parse_args()
 
     api_base = args.api_base.rstrip("/")
@@ -618,8 +675,17 @@ def main():
 
     print("正在检测分析服务是否可用...")
     if not health_check(api_base):
-        print("分析服务不可用，请先启动服务后重试。", file=sys.stderr)
-        return 2
+        if ensure_engine_available(api_base):
+            if not cli_has_arg("--api-base") or not cli_has_arg("--ui-base"):
+                refreshed = load_engine_config()
+                if refreshed:
+                    if not cli_has_arg("--api-base"):
+                        api_base = (refreshed.get("api_base") or api_base).rstrip("/")
+                    if not cli_has_arg("--ui-base"):
+                        ui_base = (refreshed.get("ui_base") or ui_base).rstrip("/")
+        else:
+            print("分析服务不可用，请先启动服务后重试。", file=sys.stderr)
+            return 2
 
     print("正在提交分析请求...")
 

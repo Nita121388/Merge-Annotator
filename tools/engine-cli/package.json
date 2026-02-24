@@ -1,0 +1,19 @@
+{
+  "name": "@chemclin/svn-merge-annotator",
+  "version": "0.1.0",
+  "description": "Local engine bootstrapper for SVN Merge Annotator",
+  "scripts": {
+    "prepack": "node scripts/prepare-backend.js",
+    "postpack": "node scripts/clean-backend.js"
+  },
+  "bin": {
+    "svn-merge-annotator": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "backend"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
