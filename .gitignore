@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.env
+.env.*
+
+node_modules/
+dist/
+.vite/
+
+.idea/
+.vscode/
+.DS_Store
+
+backend/analysis_history.sqlite3*
+backend/analysis_store/

@@ -1,0 +1,327 @@
+{
+  "name": "svn-merge-annotator",
+  "displayName": "SVN Merge Annotator",
+  "description": "在 VSCode 内展示合并分析结果并进行批注",
+  "version": "0.1.0",
+  "publisher": "chemclin",
+  "engines": {
+    "vscode": "^1.86.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:svnMergeAnnotator.files",
+    "onView:svnMergeAnnotator.notes",
+    "onCommand:svnMergeAnnotator.runAnalysis",
+    "onCommand:svnMergeAnnotator.refresh",
+    "onCommand:svnMergeAnnotator.loadById",
+    "onCommand:svnMergeAnnotator.showHistory",
+    "onCommand:svnMergeAnnotator.refreshNotes",
+    "onCommand:svnMergeAnnotator.copyNote",
+    "onCommand:svnMergeAnnotator.annotateBlock",
+    "onCommand:svnMergeAnnotator.showLegend",
+    "onCommand:svnMergeAnnotator.setAnnotationFilter",
+    "onCommand:svnMergeAnnotator.setNotesGroupBy",
+    "onCommand:svnMergeAnnotator.startBackend",
+    "onCommand:svnMergeAnnotator.stopBackend",
+    "onCommand:svnMergeAnnotator.restartBackend",
+    "onCommand:svnMergeAnnotator.backendActions",
+    "onCommand:svnMergeAnnotator.openBackendLogs"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "svnMergeAnnotator",
+          "title": "Merge Annotator",
+          "icon": "resources/icons/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "svnMergeAnnotator": [
+        {
+          "id": "svnMergeAnnotator.files",
+          "name": "文件列表"
+        },
+        {
+          "id": "svnMergeAnnotator.notes",
+          "name": "批注汇总"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "svnMergeAnnotator.runAnalysis",
+        "title": "分析",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.startBackend",
+        "title": "启动后端服务",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.stopBackend",
+        "title": "停止后端服务",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.restartBackend",
+        "title": "重启后端服务",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.backendActions",
+        "title": "后端操作面板",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openBackendLogs",
+        "title": "打开后端日志",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.refresh",
+        "title": "刷新",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.loadById",
+        "title": "加载ID",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openFile",
+        "title": "打开文件",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openMergeBlock",
+        "title": "打开合并块",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.showBlockDetail",
+        "title": "合并块详情",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.refreshNotes",
+        "title": "刷新批注",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.showHistory",
+        "title": "历史",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.copyNote",
+        "title": "复制批注",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.annotateBlock",
+        "title": "写入批注",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.toggleHideNewFiles",
+        "title": "隐藏新增",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.toggleShowOnlyChanged",
+        "title": "仅改动文件",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.toggleShowOnlyRiskLines",
+        "title": "仅风险行",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.toggleShowCommonLines",
+        "title": "显示 common",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.showLegend",
+        "title": "图例",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.setAnnotationFilter",
+        "title": "批注筛选",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.setNotesGroupBy",
+        "title": "批注分组",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.showLogs",
+        "title": "日志",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.jumpTo",
+        "title": "跳转文件",
+        "category": "SVN Merge Annotator"
+      }
+    ],
+    "configuration": {
+      "title": "SVN Merge Annotator",
+      "properties": {
+        "svnMergeAnnotator.backendUrl": {
+          "type": "string",
+          "default": "http://localhost:8000",
+          "description": "后端服务地址"
+        },
+        "svnMergeAnnotator.backendRoot": {
+          "type": "string",
+          "default": "",
+          "description": "后端目录路径（例如 backend 目录）"
+        },
+        "svnMergeAnnotator.backendStartCommand": {
+          "type": "string",
+          "default": "",
+          "description": "启动后端的命令（为空则使用默认脚本或 uvicorn 命令）"
+        },
+        "svnMergeAnnotator.showCommonLines": {
+          "type": "boolean",
+          "default": false,
+          "description": "是否显示 common 行高亮"
+        },
+        "svnMergeAnnotator.showOnlyRiskLines": {
+          "type": "boolean",
+          "default": false,
+          "description": "仅高亮存在风险批注的行"
+        },
+        "svnMergeAnnotator.showOnlyChangedFiles": {
+          "type": "boolean",
+          "default": true,
+          "description": "仅显示 has_changes 的文件"
+        },
+        "svnMergeAnnotator.hideNewFiles": {
+          "type": "boolean",
+          "default": false,
+          "description": "隐藏分支/主线新增或仅合并存在的文件"
+        },
+        "svnMergeAnnotator.annotationFilter": {
+          "type": "string",
+          "default": "all",
+          "enum": ["all", "annotated", "unannotated", "risk"],
+          "enumDescriptions": [
+            "不过滤文件",
+            "仅显示已批注文件",
+            "仅显示未批注文件",
+            "仅显示存在风险批注文件"
+          ],
+          "description": "文件列表批注筛选"
+        },
+        "svnMergeAnnotator.notesGroupBy": {
+          "type": "string",
+          "default": "file",
+          "enum": ["file", "origin", "risk"],
+          "enumDescriptions": [
+            "按文件分组",
+            "按来源分组",
+            "按风险分组"
+          ],
+          "description": "批注汇总分组方式"
+        },
+        "svnMergeAnnotator.autoLoadNotes": {
+          "type": "boolean",
+          "default": false,
+          "description": "加载分析后自动刷新 Notes"
+        },
+        "svnMergeAnnotator.analysisHistoryLimit": {
+          "type": "number",
+          "default": 20,
+          "description": "分析历史保留数量"
+        },
+        "svnMergeAnnotator.noteSnippetMaxLines": {
+          "type": "number",
+          "default": 30,
+          "description": "复制批注时最多包含的代码行数"
+        },
+        "svnMergeAnnotator.notesIncludeAllBlocks": {
+          "type": "boolean",
+          "default": true,
+          "description": "Notes 是否包含未批注的合并块"
+        },
+        "svnMergeAnnotator.debugLogging": {
+          "type": "boolean",
+          "default": true,
+          "description": "是否输出调试日志到输出面板"
+        }
+      }
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "svnMergeAnnotator.runAnalysis",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.refresh",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.backendActions",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.showHistory",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.setAnnotationFilter",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.refreshNotes",
+          "when": "view == svnMergeAnnotator.notes",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.setNotesGroupBy",
+          "when": "view == svnMergeAnnotator.notes",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.showLogs",
+          "when": "view == svnMergeAnnotator.files",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "svnMergeAnnotator.copyNote",
+          "when": "view == svnMergeAnnotator.notes && viewItem == note",
+          "group": "inline"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.86.0",
+    "typescript": "^5.4.5"
+  }
+}
