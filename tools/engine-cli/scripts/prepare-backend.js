@@ -13,16 +13,20 @@ const SKIP_DIRS = new Set([
   ".ruff_cache",
   ".idea",
   ".vscode",
+  "dist",
+  "analysis_store",
 ]);
 
 const SKIP_FILES = new Set([
   ".DS_Store",
   "uvicorn.out.log",
   "uvicorn.err.log",
+  "analysis_history.sqlite3",
 ]);
 
 function shouldSkipFile(name) {
   if (SKIP_FILES.has(name)) return true;
+  if (name.startsWith("analysis_history.sqlite3")) return true;
   if (name.endsWith(".pyc") || name.endsWith(".pyo")) return true;
   return false;
 }

@@ -53,7 +53,7 @@ Frontend:
 
 ## 本地引擎一键安装（npx）
 适用于不打开 VSCode、直接在命令行触发 skills 的场景。
-1) npx --yes @chemclin/svn-merge-annotator ensure
+1) npx --yes @sobreak/svn-merge-annotator ensure
 2) engine.json 会写入：%LOCALAPPDATA%\\svn-merge-annotator\\engine\\engine.json
 3) 若尚未发布 npm 包，可设置环境变量 SVN_MERGE_ANNOTATOR_NPX 指向本地 npx 命令
 

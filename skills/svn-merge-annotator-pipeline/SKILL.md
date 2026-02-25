@@ -18,6 +18,7 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 - 若提交记录或变更清单超时，会提示可能是远端响应慢并建议稍后重试。
 - 不要只说“计划已生成”，必须直接展示候选功能清单的可见内容。
 - 若出现超时，不直接判定失败，必须去状态接口或结果页确认进度后再给结论。
+- 在用户确认合并范围前，不拉完整 SVN log；先给出分支起点与变更概览，再询问合并意图。
 
 ## Inputs
 - branch_dir: full path to the branch folder
@@ -26,6 +27,7 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 - base_dir (optional): full path to the common base folder
 - Optional: --open to open the web UI after analysis
 - Optional: --plan to generate a merge plan grouped by paths
+- Optional: --skip-log to skip svn log and only show summary before asking merge scope
 - Optional: --include/--exclude to filter merge plan by keywords
 - Optional: --group-depth to control grouping depth
 - Optional: --log-limit to limit svn log entries (default 200)
@@ -35,7 +37,7 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 
 ## 脚本位置
 - 本地引擎配置统一写入：%LOCALAPPDATA%\\svn-merge-annotator\\engine\\engine.json
-- 若本地服务未启动，会尝试通过 `npx --yes @chemclin/svn-merge-annotator ensure` 自动安装/启动。
+- 若本地服务未启动，会尝试通过 `npx --yes @sobreak/svn-merge-annotator ensure` 自动安装/启动。
 - 脚本文件：C:\Users\chemclin\.codex\skills\svn-merge-annotator-pipeline\scripts\run_pipeline.py
 - 批注写回脚本：C:\Users\chemclin\.codex\skills\svn-merge-annotator-pipeline\scripts\post_annotate.py（UTF-8 写回 /api/ai/annotate，避免中文乱码）
 - 建议在技能目录下执行，或在命令里使用该脚本的绝对路径。
@@ -48,6 +50,7 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 - 询问用自然语言：请直接说“要合并哪些功能/暂不合并哪些功能”，允许用户用功能名描述回复。
 - 不提示“按编号/按路径/混合”等固定格式；只有在用户主动提到路径筛选时再解释。
 - 如果用户觉得功能划分不合理，提示可按模块/目录/医院补丁等重新拆分，并让用户给拆分规则。
+- 若尚未确认合并范围，仅展示分支起点与变更概览，不输出提交候选清单。
 
 ## 超时与进度确认
 - 若脚本提示超时，先检查状态接口：/api/status?analysis_id=...，确认 state 后再给出结论。
@@ -56,11 +59,11 @@ description: 运行 svn-merge-annotator 的端到端分析流程，并扩展“�
 
 ## Steps
 1) 确保分析服务已启动（若需打开结果页再启动界面服务）。
-2) 默认先运行 --plan 生成“分支起点 + 提交候选 + 变更摘要”（除非用户明确只要打开结果页）。
+2) 默认先运行 --plan --skip-log 生成“分支起点 + 变更摘要”，并询问合并范围（除非用户明确只要打开结果页或直接要完整候选）。
 3) Run the pipeline script with the three directories.
 4) If --open is set, the script opens the result UI.
 5) If --plan is set, the script outputs a merge plan (feature groups).
-6) 输出提交记录候选功能包并提示用户选择（合并/排除/顺序），不要求用户选择修订号。
+6) 用户确认合并范围后，再运行一次 --plan（不带 --skip-log）输出提交记录候选功能包并提示用户选择（合并/排除/顺序），不要求用户选择修订号。
 7) Codex fetches /api/files and /api/file to build explanations.
 8) Codex 使用 scripts/post_annotate.py 以 UTF-8 写回 /api/ai/annotate（避免中文乱码）。
 
@@ -103,3 +106,6 @@ python scripts/run_pipeline.py --branch "E:\\branch" --trunk "E:\\trunk" --merge
 
 ## Command (merge plan)
 python scripts/run_pipeline.py --branch "E:\\branch" --trunk "E:\\trunk" --merge "E:\\merge" --base "E:\\base" --plan --group-depth 1 --include "report,api" --exclude "auth" --show-files
+
+## Command (summary first)
+python scripts/run_pipeline.py --branch "E:\\branch" --trunk "E:\\trunk" --merge "E:\\merge" --base "E:\\base" --plan --skip-log --group-depth 1 --show-files

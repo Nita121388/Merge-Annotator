@@ -50,7 +50,7 @@ def cli_has_arg(flag):
 def run_npx_ensure():
     cmd = os.getenv(
         "SVN_MERGE_ANNOTATOR_NPX",
-        "npx --yes @chemclin/svn-merge-annotator ensure",
+        "npx --yes @sobreak/svn-merge-annotator ensure",
     )
     try:
         result = subprocess.run(cmd, shell=True)
@@ -663,6 +663,7 @@ def main():
     parser.add_argument("--exclude")
     parser.add_argument("--group-depth", type=int, default=1)
     parser.add_argument("--log-limit", type=int, default=200)
+    parser.add_argument("--skip-log", action="store_true")
     parser.add_argument("--show-files", action="store_true")
     parser.add_argument("--show-revs", action="store_true")
     parser.add_argument("--hide-revs", action="store_true")
@@ -726,20 +727,23 @@ def main():
                 start_rev += 1
         elif origin and origin.get("revision"):
             start_rev = safe_int(origin.get("revision"))
-        print("正在获取提交记录...")
-        entries = svn_log_entries(
-            branch_target, start_rev=start_rev, end_rev="HEAD", limit=args.log_limit
-        )
-        if entries:
-            candidates = build_feature_candidates(entries, depth)
-            show_revs = True
-            if args.hide_revs:
-                show_revs = False
-            if args.show_revs:
-                show_revs = True
-            print_feature_candidates(candidates, show_revs=show_revs)
+        if args.skip_log:
+            print("已跳过提交记录分析，请先确认合并范围后再生成候选功能包。")
         else:
-            print("提交记录: 无法获取，功能候选可能不完整")
+            print("正在获取提交记录...")
+            entries = svn_log_entries(
+                branch_target, start_rev=start_rev, end_rev="HEAD", limit=args.log_limit
+            )
+            if entries:
+                candidates = build_feature_candidates(entries, depth)
+                show_revs = True
+                if args.hide_revs:
+                    show_revs = False
+                if args.show_revs:
+                    show_revs = True
+                print_feature_candidates(candidates, show_revs=show_revs)
+            else:
+                print("提交记录: 无法获取，功能候选可能不完整")
         print("正在等待分析完成...")
         if not wait_for_analysis(api_base, analysis_id):
             return 2
