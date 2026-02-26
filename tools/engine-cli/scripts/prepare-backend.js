@@ -14,6 +14,7 @@ const SKIP_DIRS = new Set([
   ".idea",
   ".vscode",
   "dist",
+  "build",
   "analysis_store",
 ]);
 
@@ -22,11 +23,13 @@ const SKIP_FILES = new Set([
   "uvicorn.out.log",
   "uvicorn.err.log",
   "analysis_history.sqlite3",
+  "svn-merge-annotator-backend-windows-x64.spec",
 ]);
 
 function shouldSkipFile(name) {
   if (SKIP_FILES.has(name)) return true;
   if (name.startsWith("analysis_history.sqlite3")) return true;
+  if (name.endsWith(".spec")) return true;
   if (name.endsWith(".pyc") || name.endsWith(".pyo")) return true;
   return false;
 }

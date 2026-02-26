@@ -1,6 +1,6 @@
 {
   "name": "@sobreak/svn-merge-annotator",
-  "version": "0.1.1",
+  "version": "0.1.5",
   "description": "Local engine bootstrapper for SVN Merge Annotator",
   "keywords": ["svn", "merge", "annotator", "engine", "vibe-coding", "alpha"],
   "publishConfig": {
