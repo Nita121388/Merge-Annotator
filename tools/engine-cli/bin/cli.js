@@ -86,6 +86,23 @@ function getBackendBinaryPath() {
   return path.join(binDir, name);
 }
 
+function getChecksumSuffix() {
+  const name = getBackendBinaryName();
+  if (!name) return "";
+  let suffix = name.replace("svn-merge-annotator-backend-", "");
+  suffix = suffix.replace(/\.exe$/, "");
+  return suffix;
+}
+
+function getChecksumsCandidates() {
+  const candidates = ["checksums.txt"];
+  const suffix = getChecksumSuffix();
+  if (suffix) {
+    candidates.push(`checksums-${suffix}.txt`);
+  }
+  return candidates;
+}
+
 function getPackageVersion() {
   const pkgRoot = path.resolve(__dirname, "..");
   const pkgJson = path.join(pkgRoot, "package.json");
@@ -290,18 +307,33 @@ async function ensureBackendBinary(version) {
   if (fs.existsSync(binaryPath)) return binaryPath;
   const baseUrl = getBackendDownloadBase(version);
   const fileName = path.basename(binaryPath);
-  const checksumUrl = `${baseUrl}/checksums.txt`;
-  let checksumsText = "";
-  try {
-    checksumsText = await requestText(checksumUrl);
-  } catch (err) {
-    logError(`Failed to download checksums: ${err.message || err}`);
-    return null;
+  const checksumCandidates = getChecksumsCandidates();
+  let expected = "";
+  const errors = [];
+  for (const candidate of checksumCandidates) {
+    const checksumUrl = `${baseUrl}/${candidate}`;
+    let checksumsText = "";
+    try {
+      checksumsText = await requestText(checksumUrl);
+    } catch (err) {
+      errors.push(`Failed to download ${candidate}: ${err.message || err}`);
+      continue;
+    }
+    const checksums = parseChecksums(checksumsText);
+    const value = checksums.get(fileName);
+    if (!value) {
+      errors.push(`Checksum entry not found for ${fileName} in ${candidate}.`);
+      continue;
+    }
+    expected = value;
+    break;
   }
-  const checksums = parseChecksums(checksumsText);
-  const expected = checksums.get(fileName);
   if (!expected) {
-    logError(`Checksum entry not found for ${fileName}.`);
+    if (errors.length === 0) {
+      logError(`Checksum entry not found for ${fileName}.`);
+    } else {
+      for (const message of errors) logError(message);
+    }
     return null;
   }
   try {
