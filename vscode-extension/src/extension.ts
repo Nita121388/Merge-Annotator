@@ -170,8 +170,49 @@ type EngineConfig = {
   updated_at?: string;
 };
 
+type RevRangeTarget = "branch" | "trunk";
+type RevGroupMode = "dir1" | "dir2" | "commit";
+type RevChangeFilter = "all" | "A" | "M" | "D";
+
+type RevChangeItem = {
+  status: string;
+  path: string;
+};
+
+type RevLogEntry = {
+  revision: string;
+  author?: string;
+  date?: string;
+  message?: string;
+  items: RevChangeItem[];
+};
+
+type RevFileLogEntry = {
+  revision: string;
+  author?: string;
+  date?: string;
+  message?: string;
+};
+
+type RootInfo = {
+  rootPath: string;
+  rootUrl: string;
+  reposRoot?: string;
+  rootSuffix?: string;
+};
+
+type RevChangeState = {
+  target: RevRangeTarget;
+  startRev: string;
+  endRev: string;
+  root: RootInfo;
+  diffItems: RevChangeItem[];
+  logEntries?: RevLogEntry[];
+};
+
 const LAST_DIRS_KEY = "lastDirs";
 const LAST_ANALYSIS_ID_KEY = "lastAnalysisId";
+const REV_RANGE_KEY = "revRangeState";
 
 class BackendClient {
   private baseUrl: string;
@@ -291,10 +332,109 @@ class DirectoryItem extends vscode.TreeItem {
   }
 }
 
-type TreeNode = FileItem | DirectoryItem;
+class LegendRowItem extends vscode.TreeItem {
+  constructor(label: string, description: string, iconPath?: string) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.contextValue = "legendRow";
+    if (iconPath) {
+      this.iconPath = iconPath;
+    }
+  }
+}
+
+class LegendGroupItem extends vscode.TreeItem {
+  children: LegendRowItem[];
+  constructor(context: vscode.ExtensionContext) {
+    super("颜色图例", vscode.TreeItemCollapsibleState.Expanded);
+    this.contextValue = "legendGroup";
+    this.iconPath = new vscode.ThemeIcon("symbol-color");
+    const iconBase = context.asAbsolutePath(path.join("resources", "icons"));
+    const manualIcon = context.asAbsolutePath(
+      path.join("resources", "icons", "manual.svg")
+    );
+    const conflictIcon = context.asAbsolutePath(
+      path.join("resources", "icons", "conflict.svg")
+    );
+    this.children = [
+      new LegendRowItem(
+        "分支改动",
+        "橙色",
+        path.join(iconBase, "legend-branch.svg")
+      ),
+      new LegendRowItem(
+        "主线改动",
+        "蓝色",
+        path.join(iconBase, "legend-trunk.svg")
+      ),
+      new LegendRowItem(
+        "共同一致",
+        "绿色",
+        path.join(iconBase, "legend-common.svg")
+      ),
+      new LegendRowItem(
+        "手工调整",
+        "紫色",
+        path.join(iconBase, "legend-manual.svg")
+      ),
+      new LegendRowItem(
+        "冲突块",
+        "红色",
+        path.join(iconBase, "legend-conflict.svg")
+      ),
+      new LegendRowItem(
+        "未知归属",
+        "灰色",
+        path.join(iconBase, "legend-unknown.svg")
+      ),
+      new LegendRowItem("Gutter 图标-手工批注", "manual", manualIcon),
+      new LegendRowItem("Gutter 图标-冲突块", "conflict", conflictIcon),
+    ];
+  }
+}
+
+type TreeNode = FileItem | DirectoryItem | LegendGroupItem | LegendRowItem;
 
 function splitRelPath(relPath: string) {
   return relPath.replace(/\\/g, "/").split("/").filter(Boolean);
+}
+
+function normalizeRevStatus(status: string) {
+  const upper = status.toUpperCase();
+  if (upper === "A" || upper === "D") return upper;
+  return "M";
+}
+
+function getRevStatusIcon(status: string) {
+  const normalized = normalizeRevStatus(status);
+  if (normalized === "A") {
+    return new vscode.ThemeIcon("diff-added");
+  }
+  if (normalized === "D") {
+    return new vscode.ThemeIcon("diff-removed");
+  }
+  return new vscode.ThemeIcon("diff-modified");
+}
+
+function countRevItems(items: RevChangeItem[]) {
+  let add = 0;
+  let del = 0;
+  let mod = 0;
+  for (const item of items) {
+    const normalized = normalizeRevStatus(item.status);
+    if (normalized === "A") {
+      add += 1;
+    } else if (normalized === "D") {
+      del += 1;
+    } else {
+      mod += 1;
+    }
+  }
+  return { total: items.length, add, mod, del };
+}
+
+function formatRevCounts(counts: { total: number; add: number; mod: number; del: number }) {
+  return `A${counts.add} M${counts.mod} D${counts.del}`;
 }
 
 function updateDirectoryDescription(dir: DirectoryItem) {
@@ -378,9 +518,14 @@ class FileTreeProvider implements vscode.TreeDataProvider<TreeNode> {
     this._onDidChangeTreeData.event;
 
   private nodes: TreeNode[] = [];
+  private legendNode: LegendGroupItem;
+
+  constructor(context: vscode.ExtensionContext) {
+    this.legendNode = new LegendGroupItem(context);
+  }
 
   refresh(files: FileSummary[] = [], summaryByPath?: Map<string, FileSummaryStat>) {
-    this.nodes = buildFileTree(files || [], summaryByPath);
+    this.nodes = [this.legendNode, ...buildFileTree(files || [], summaryByPath)];
     this._onDidChangeTreeData.fire();
   }
 
@@ -391,6 +536,12 @@ class FileTreeProvider implements vscode.TreeDataProvider<TreeNode> {
   getChildren(element?: TreeNode): Thenable<TreeNode[]> {
     if (!element) {
       return Promise.resolve(this.nodes);
+    }
+    if (element instanceof LegendGroupItem) {
+      return Promise.resolve(element.children);
+    }
+    if (element instanceof LegendRowItem) {
+      return Promise.resolve([]);
     }
     if (element instanceof DirectoryItem) {
       return Promise.resolve(element.children);
@@ -576,6 +727,74 @@ class NotesTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
             )
         );
       return Promise.resolve(items);
+    }
+    return Promise.resolve([]);
+  }
+}
+
+class RevHeaderItem extends vscode.TreeItem {
+  constructor(label: string, description?: string) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    this.contextValue = "revHeader";
+  }
+}
+
+class RevGroupItem extends vscode.TreeItem {
+  children: vscode.TreeItem[] = [];
+  constructor(label: string, description?: string, tooltip?: string) {
+    super(label, vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = description;
+    if (tooltip) {
+      this.tooltip = tooltip;
+    }
+    this.contextValue = "revGroup";
+  }
+}
+
+class RevFileItem extends vscode.TreeItem {
+  relPath: string;
+  status: string;
+  constructor(relPath: string, status: string) {
+    super(relPath, vscode.TreeItemCollapsibleState.None);
+    this.relPath = relPath;
+    this.status = status;
+    this.description = status;
+    this.tooltip = `${status} ${relPath}`;
+    this.contextValue = "revFile";
+    this.command = {
+      command: "svnMergeAnnotator.openRevDiff",
+      title: "打开差异",
+      arguments: [this],
+    };
+    this.iconPath = getRevStatusIcon(status);
+  }
+}
+
+class RevChangeTreeProvider implements vscode.TreeDataProvider<vscode.TreeItem> {
+  private _onDidChangeTreeData: vscode.EventEmitter<
+    vscode.TreeItem | undefined | void
+  > = new vscode.EventEmitter<vscode.TreeItem | undefined | void>();
+  readonly onDidChangeTreeData: vscode.Event<vscode.TreeItem | undefined | void> =
+    this._onDidChangeTreeData.event;
+
+  private nodes: vscode.TreeItem[] = [];
+
+  refresh(nodes: vscode.TreeItem[]) {
+    this.nodes = nodes;
+    this._onDidChangeTreeData.fire();
+  }
+
+  getTreeItem(element: vscode.TreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
+    if (!element) {
+      return Promise.resolve(this.nodes);
+    }
+    if (element instanceof RevGroupItem) {
+      return Promise.resolve(element.children);
     }
     return Promise.resolve([]);
   }
@@ -1054,8 +1273,9 @@ function extractNotes(detail: FileDetail): Block[] {
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  const treeProvider = new FileTreeProvider();
+  const treeProvider = new FileTreeProvider(context);
   const notesProvider = new NotesTreeProvider();
+  const revProvider = new RevChangeTreeProvider();
   const decorations = new DecorationManager(context);
   const output = vscode.window.createOutputChannel("SVN Merge Annotator");
   const state: AnalysisState = {
@@ -1073,6 +1293,9 @@ export function activate(context: vscode.ExtensionContext) {
     summaryLoaded: false,
     summaryLoading: false,
   };
+  let revState: RevChangeState | undefined;
+  const revRootCache = new Map<RevRangeTarget, RootInfo>();
+  const revFileLogCache = new Map<string, RevFileLogEntry[]>();
   let backendProcess: child_process.ChildProcess | undefined;
   let backendStartInProgress = false;
   let backendManaged = false;
@@ -1094,7 +1317,31 @@ export function activate(context: vscode.ExtensionContext) {
   const notesView = vscode.window.createTreeView("svnMergeAnnotator.notes", {
     treeDataProvider: notesProvider,
   });
-  context.subscriptions.push(filesView, notesView, output, statusBar);
+  const revView = vscode.window.createTreeView("svnMergeAnnotator.revChanges", {
+    treeDataProvider: revProvider,
+  });
+  context.subscriptions.push(filesView, notesView, revView, output, statusBar);
+
+  const revContentProvider: vscode.TextDocumentContentProvider = {
+    provideTextDocumentContent: async (uri) => {
+      const relPath = decodeURIComponent(uri.path.replace(/^\/+/, ""));
+      const params = new URLSearchParams(uri.query);
+      const rev = params.get("rev") || "";
+      if (!revState) {
+        return "未加载提交范围数据";
+      }
+      const fileUrl = joinUrl(revState.root.rootUrl, relPath);
+      const resp = await runSvn(["cat", "-r", rev, fileUrl], revState.root.rootPath);
+      if (resp.code !== 0) {
+        const errorText = resp.stderr || "该修订号下文件不存在";
+        return `// ${formatRevLabel(rev)} 无法读取\n${errorText}`;
+      }
+      return resp.stdout;
+    },
+  };
+  context.subscriptions.push(
+    vscode.workspace.registerTextDocumentContentProvider("svnrev", revContentProvider)
+  );
 
   function logMessage(
     level: "INFO" | "WARN" | "ERROR",
@@ -1686,6 +1933,22 @@ export function activate(context: vscode.ExtensionContext) {
       if (event.affectsConfiguration("svnMergeAnnotator.notesGroupBy")) {
         refreshNotesViewFromCache();
       }
+      if (
+        event.affectsConfiguration("svnMergeAnnotator.revGroupMode") ||
+        event.affectsConfiguration("svnMergeAnnotator.revChangeFilter")
+      ) {
+        void (async () => {
+          if (getRevGroupMode() === "commit") {
+            try {
+              await ensureLogEntries();
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              vscode.window.showErrorMessage(message);
+            }
+          }
+          refreshRevView();
+        })();
+      }
     })
   );
 
@@ -1701,6 +1964,18 @@ export function activate(context: vscode.ExtensionContext) {
     const value = getConfig<NotesGroupBy>("notesGroupBy", "file");
     if (value === "origin" || value === "risk") return value;
     return "file";
+  }
+
+  function getRevGroupMode(): RevGroupMode {
+    const value = getConfig<RevGroupMode>("revGroupMode", "dir1");
+    if (value === "dir2" || value === "commit") return value;
+    return "dir1";
+  }
+
+  function getRevChangeFilter(): RevChangeFilter {
+    const value = getConfig<RevChangeFilter>("revChangeFilter", "all");
+    if (value === "A" || value === "M" || value === "D") return value;
+    return "all";
   }
 
   function isAnnotatedDetail(detail: FileDetail) {
@@ -2535,6 +2810,633 @@ export function activate(context: vscode.ExtensionContext) {
     quickPick.show();
   }
 
+  function normalizeRevInput(raw?: string): string | undefined {
+    if (!raw) return undefined;
+    const value = raw.trim();
+    if (!value) return undefined;
+    if (value.toUpperCase() === "HEAD") return "HEAD";
+    const cleaned = value.replace(/^r/i, "");
+    if (!/^\d+$/.test(cleaned)) return undefined;
+    return cleaned;
+  }
+
+  function formatRevLabel(rev: string) {
+    if (rev.toUpperCase() === "HEAD") return "HEAD";
+    const cleaned = rev.replace(/^r/i, "");
+    return `r${cleaned}`;
+  }
+
+  function filterRevItems(items: RevChangeItem[], filter: RevChangeFilter) {
+    if (filter === "all") return items;
+    return items.filter((item) => normalizeRevStatus(item.status) === filter);
+  }
+
+  function normalizeSlashes(value: string) {
+    return value.replace(/\\/g, "/");
+  }
+
+  function joinUrl(base: string, relPath: string) {
+    const left = base.replace(/\/+$/, "");
+    const right = relPath.replace(/^\/+/, "");
+    return `${left}/${right}`;
+  }
+
+  function decodeXml(value: string) {
+    return value
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/&quot;/g, "\"")
+      .replace(/&apos;/g, "'");
+  }
+
+  function toRelativePath(rawPath: string, root: RootInfo) {
+    const value = rawPath.trim();
+    if (!value) return "";
+    if (root.rootUrl && value.startsWith(root.rootUrl)) {
+      return value.slice(root.rootUrl.length).replace(/^\/+/, "");
+    }
+    if (root.reposRoot && root.rootSuffix) {
+      const fullPrefix = `${root.reposRoot}${root.rootSuffix}`;
+      if (value.startsWith(fullPrefix)) {
+        return value.slice(fullPrefix.length).replace(/^\/+/, "");
+      }
+    }
+    if (root.rootSuffix && value.startsWith(root.rootSuffix)) {
+      return value.slice(root.rootSuffix.length).replace(/^\/+/, "");
+    }
+    if (value.startsWith("/") || value.includes("://")) {
+      return "";
+    }
+    const normalizedRoot = normalizeSlashes(root.rootPath);
+    const normalizedValue = normalizeSlashes(value);
+    if (normalizedValue.startsWith(normalizedRoot)) {
+      return normalizedValue.slice(normalizedRoot.length).replace(/^\/+/, "");
+    }
+    return value.replace(/^\/+/, "");
+  }
+
+  function getDirGroupKey(relPath: string, depth: number) {
+    const parts = splitRelPath(relPath);
+    if (!parts.length) return "ROOT";
+    const dirs = parts.slice(0, -1);
+    if (!dirs.length) return "ROOT";
+    const take = Math.min(depth, dirs.length);
+    return dirs.slice(0, take).join("/");
+  }
+
+  function buildRevHeader(state: RevChangeState) {
+    const targetLabel = state.target === "branch" ? "分支" : "主线";
+    const label = "提交范围";
+    const counts = countRevItems(state.diffItems);
+    const desc = `${formatRevLabel(state.startRev)} → ${formatRevLabel(
+      state.endRev
+    )} (${targetLabel}) · ${formatRevCounts(counts)}`;
+    return new RevHeaderItem(label, desc);
+  }
+
+  function buildDirectoryNodes(
+    items: RevChangeItem[],
+    depth: number,
+    filter: RevChangeFilter
+  ) {
+    const filtered = filterRevItems(items, filter);
+    if (!filtered.length) {
+      return [new RevHeaderItem("暂无变更")];
+    }
+    const groups = new Map<string, RevChangeItem[]>();
+    for (const item of filtered) {
+      const key = getDirGroupKey(item.path, depth);
+      if (!groups.has(key)) {
+        groups.set(key, []);
+      }
+      groups.get(key)?.push(item);
+    }
+    const nodes: RevGroupItem[] = [];
+    const keys = Array.from(groups.keys()).sort();
+    for (const key of keys) {
+      const groupItems = groups.get(key) || [];
+      groupItems.sort((a, b) => a.path.localeCompare(b.path));
+      const counts = countRevItems(groupItems);
+      const group = new RevGroupItem(
+        key,
+        `文件 ${counts.total} · ${formatRevCounts(counts)}`
+      );
+      group.children = groupItems.map(
+        (item) => new RevFileItem(item.path, normalizeRevStatus(item.status))
+      );
+      nodes.push(group);
+    }
+    return nodes;
+  }
+
+  function formatLogMessage(message?: string) {
+    if (!message) return "";
+    const first = message.split(/\r?\n/)[0]?.trim();
+    return first || "";
+  }
+
+  function formatLogDate(date?: string) {
+    if (!date) return "";
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) return date;
+    return parsed.toLocaleString();
+  }
+
+  function buildCommitNodes(
+    entries: RevLogEntry[] | undefined,
+    filter: RevChangeFilter
+  ) {
+    if (!entries || !entries.length) {
+      return [new RevHeaderItem("暂无提交记录")];
+    }
+    const nodes: RevGroupItem[] = [];
+    for (const entry of entries) {
+      const filtered = filterRevItems(entry.items || [], filter);
+      if (!filtered.length) continue;
+      const label = `r${entry.revision}`;
+      const message = formatLogMessage(entry.message);
+      const metaParts = [];
+      if (entry.author) metaParts.push(entry.author);
+      const dateText = formatLogDate(entry.date);
+      if (dateText) metaParts.push(dateText);
+      const counts = countRevItems(filtered);
+      const summary = formatRevCounts(counts);
+      const description = message
+        ? `${message} · ${summary}`
+        : `${metaParts.join(" · ")}${metaParts.length ? " · " : ""}${summary}`;
+      const tooltipLines = [
+        label,
+        entry.author ? `作者: ${entry.author}` : "",
+        entry.date ? `时间: ${formatLogDate(entry.date)}` : "",
+        message ? `说明: ${message}` : "",
+        `范围: ${summary}`,
+      ].filter(Boolean);
+      const group = new RevGroupItem(label, description, tooltipLines.join("\n"));
+      group.children = filtered.map(
+        (item) => new RevFileItem(item.path, normalizeRevStatus(item.status))
+      );
+      nodes.push(group);
+    }
+    if (!nodes.length) {
+      return [new RevHeaderItem("暂无提交记录")];
+    }
+    return nodes;
+  }
+
+  function buildRevNodes(state: RevChangeState) {
+    const mode = getRevGroupMode();
+    const filter = getRevChangeFilter();
+    const header = buildRevHeader(state);
+    if (mode === "commit") {
+      return [header, ...buildCommitNodes(state.logEntries, filter)];
+    }
+    const depth = mode === "dir2" ? 2 : 1;
+    return [header, ...buildDirectoryNodes(state.diffItems, depth, filter)];
+  }
+
+  async function runSvn(
+    args: string[],
+    cwd?: string
+  ): Promise<{ stdout: string; stderr: string; code: number }> {
+    return new Promise((resolve) => {
+      const proc = child_process.spawn("svn", args, {
+        cwd,
+        shell: true,
+      });
+      const stdoutChunks: Buffer[] = [];
+      const stderrChunks: Buffer[] = [];
+      proc.stdout?.on("data", (chunk) => stdoutChunks.push(Buffer.from(chunk)));
+      proc.stderr?.on("data", (chunk) => stderrChunks.push(Buffer.from(chunk)));
+      proc.on("error", (err) => {
+        const stderr = err instanceof Error ? err.message : String(err);
+        resolve({ stdout: "", stderr, code: 1 });
+      });
+      proc.on("close", (code) => {
+        const stdout = Buffer.concat(stdoutChunks).toString("utf-8");
+        const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+        resolve({ stdout, stderr, code: code ?? 0 });
+      });
+    });
+  }
+
+  async function getRootInfo(target: RevRangeTarget): Promise<RootInfo | undefined> {
+    const cached = revRootCache.get(target);
+    if (cached) return cached;
+    const rootPath = await resolveRoot(target);
+    if (!rootPath) return undefined;
+    const info = await runSvn(["info", "--xml", rootPath], rootPath);
+    if (info.code !== 0) {
+      throw new Error(info.stderr || "无法读取 SVN 信息");
+    }
+    const urlMatch = info.stdout.match(/<url>([^<]+)<\/url>/);
+    const rootMatch = info.stdout.match(/<root>([^<]+)<\/root>/);
+    const rootUrl = urlMatch ? decodeXml(urlMatch[1]) : "";
+    if (!rootUrl) {
+      throw new Error("未获取到 SVN URL");
+    }
+    const reposRoot = rootMatch ? decodeXml(rootMatch[1]) : undefined;
+    const rootSuffix =
+      reposRoot && rootUrl.startsWith(reposRoot)
+        ? rootUrl.slice(reposRoot.length)
+        : undefined;
+    const root: RootInfo = {
+      rootPath,
+      rootUrl,
+      reposRoot,
+      rootSuffix,
+    };
+    revRootCache.set(target, root);
+    return root;
+  }
+
+  async function fetchDiffItems(
+    root: RootInfo,
+    startRev: string,
+    endRev: string
+  ) {
+    const range = `${startRev}:${endRev}`;
+    const resp = await runSvn(
+      ["diff", "--summarize", "-r", range, root.rootUrl],
+      root.rootPath
+    );
+    if (resp.code !== 0) {
+      throw new Error(resp.stderr || "获取提交范围差异失败");
+    }
+    const items: RevChangeItem[] = [];
+    for (const line of resp.stdout.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+      const match = trimmed.match(/^([A-Z])\s+(.+)$/);
+      if (!match) continue;
+      const status = match[1];
+      const rawPath = match[2].trim();
+      const relPath = toRelativePath(rawPath, root);
+      if (!relPath) continue;
+      items.push({ status, path: relPath });
+    }
+    return items;
+  }
+
+  async function fetchLogEntries(
+    root: RootInfo,
+    startRev: string,
+    endRev: string
+  ) {
+    const range = `${startRev}:${endRev}`;
+    const resp = await runSvn(
+      ["log", "--xml", "-v", "-r", range, root.rootUrl],
+      root.rootPath
+    );
+    if (resp.code !== 0) {
+      throw new Error(resp.stderr || "获取提交记录失败");
+    }
+    const entries: RevLogEntry[] = [];
+    const blocks = resp.stdout.match(/<logentry[\s\S]*?<\/logentry>/g) || [];
+    for (const block of blocks) {
+      const revMatch = block.match(/revision=\"(\d+)\"/);
+      if (!revMatch) continue;
+      const revision = revMatch[1];
+      const authorMatch = block.match(/<author>([\s\S]*?)<\/author>/);
+      const dateMatch = block.match(/<date>([\s\S]*?)<\/date>/);
+      const msgMatch = block.match(/<msg>([\s\S]*?)<\/msg>/);
+      const items: RevChangeItem[] = [];
+      const pathBlocks = block.match(/<path[^>]*>[\s\S]*?<\/path>/g) || [];
+      for (const pathBlock of pathBlocks) {
+        const actionMatch = pathBlock.match(/action=\"([A-Z])\"/);
+        const action = actionMatch ? actionMatch[1] : "M";
+        const rawPath = pathBlock
+          .replace(/^<path[^>]*>/, "")
+          .replace(/<\/path>$/, "");
+        const decodedPath = decodeXml(rawPath);
+        const relPath = toRelativePath(decodedPath, root);
+        if (!relPath) continue;
+        items.push({ status: action, path: relPath });
+      }
+      entries.push({
+        revision,
+        author: authorMatch ? decodeXml(authorMatch[1]).trim() : undefined,
+        date: dateMatch ? decodeXml(dateMatch[1]).trim() : undefined,
+        message: msgMatch ? decodeXml(msgMatch[1]).trim() : undefined,
+        items,
+      });
+    }
+    return entries;
+  }
+
+  async function fetchFileLogEntries(
+    root: RootInfo,
+    startRev: string,
+    endRev: string,
+    relPath: string
+  ) {
+    const range = `${startRev}:${endRev}`;
+    const fileUrl = joinUrl(root.rootUrl, relPath);
+    const resp = await runSvn(
+      ["log", "--xml", "-r", range, fileUrl],
+      root.rootPath
+    );
+    if (resp.code !== 0) {
+      throw new Error(resp.stderr || "获取文件提交记录失败");
+    }
+    const entries: RevFileLogEntry[] = [];
+    const blocks = resp.stdout.match(/<logentry[\s\S]*?<\/logentry>/g) || [];
+    for (const block of blocks) {
+      const revMatch = block.match(/revision=\"(\d+)\"/);
+      if (!revMatch) continue;
+      const revision = revMatch[1];
+      const authorMatch = block.match(/<author>([\s\S]*?)<\/author>/);
+      const dateMatch = block.match(/<date>([\s\S]*?)<\/date>/);
+      const msgMatch = block.match(/<msg>([\s\S]*?)<\/msg>/);
+      entries.push({
+        revision,
+        author: authorMatch ? decodeXml(authorMatch[1]).trim() : undefined,
+        date: dateMatch ? decodeXml(dateMatch[1]).trim() : undefined,
+        message: msgMatch ? decodeXml(msgMatch[1]).trim() : undefined,
+      });
+    }
+    return entries;
+  }
+
+  async function ensureLogEntries() {
+    if (!revState) return;
+    if (revState.logEntries) return;
+    revState.logEntries = await fetchLogEntries(
+      revState.root,
+      revState.startRev,
+      revState.endRev
+    );
+  }
+
+  async function ensureFileLogEntries(relPath: string) {
+    if (!revState) return [];
+    const cached = revFileLogCache.get(relPath);
+    if (cached) return cached;
+    const entries = await fetchFileLogEntries(
+      revState.root,
+      revState.startRev,
+      revState.endRev,
+      relPath
+    );
+    revFileLogCache.set(relPath, entries);
+    return entries;
+  }
+
+  function refreshRevView() {
+    if (!revState) {
+      revView.message = "未运行提交范围变更";
+      revProvider.refresh([new RevHeaderItem("暂无提交范围数据")]);
+      return;
+    }
+    const nodes = buildRevNodes(revState);
+    const targetLabel = revState.target === "branch" ? "分支" : "主线";
+    revView.message = `${formatRevLabel(revState.startRev)} → ${formatRevLabel(
+      revState.endRev
+    )} (${targetLabel})`;
+    revProvider.refresh(nodes);
+  }
+
+  async function runRevRangeInternal(
+    target: RevRangeTarget,
+    startRev: string,
+    endRev: string
+  ) {
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: "提交范围变更分析",
+        cancellable: false,
+      },
+      async (progress) => {
+        progress.report({ message: "读取 SVN 信息..." });
+        const root = await getRootInfo(target);
+        if (!root) {
+          throw new Error("未找到 SVN 根目录");
+        }
+        progress.report({ message: "获取变更清单..." });
+        const diffItems = await fetchDiffItems(root, startRev, endRev);
+        let logEntries: RevLogEntry[] | undefined;
+        if (getRevGroupMode() === "commit") {
+          progress.report({ message: "获取提交记录..." });
+          logEntries = await fetchLogEntries(root, startRev, endRev);
+        }
+        revState = {
+          target,
+          startRev,
+          endRev,
+          root,
+          diffItems,
+          logEntries,
+        };
+        revFileLogCache.clear();
+        await context.globalState.update(REV_RANGE_KEY, {
+          target,
+          startRev,
+          endRev,
+        });
+      }
+    );
+    refreshRevView();
+  }
+
+  async function runRevRange() {
+    const last = context.globalState.get<{
+      target?: RevRangeTarget;
+      startRev?: string;
+      endRev?: string;
+    }>(REV_RANGE_KEY);
+    type TargetPick = vscode.QuickPickItem & { value: RevRangeTarget };
+    const targetPick = await vscode.window.showQuickPick<TargetPick>(
+      [
+        { label: "分支", value: "branch" as RevRangeTarget },
+        { label: "主线", value: "trunk" as RevRangeTarget },
+      ],
+      {
+        placeHolder: "选择提交范围目标",
+      }
+    );
+    if (!targetPick) return;
+    const startInput = await vscode.window.showInputBox({
+      prompt: "输入起始修订号（如 4903 或 r4903）",
+      value: last?.startRev ? formatRevLabel(last.startRev) : "",
+    });
+    const startRev = normalizeRevInput(startInput);
+    if (!startRev) {
+      vscode.window.showErrorMessage("起始修订号无效");
+      return;
+    }
+    const endInput = await vscode.window.showInputBox({
+      prompt: "输入结束修订号（如 5120 或 HEAD）",
+      value: last?.endRev ? formatRevLabel(last.endRev) : "",
+    });
+    const endRev = normalizeRevInput(endInput);
+    if (!endRev) {
+      vscode.window.showErrorMessage("结束修订号无效");
+      return;
+    }
+    try {
+      await runRevRangeInternal(targetPick.value, startRev, endRev);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(message);
+    }
+  }
+
+  async function refreshRevChanges() {
+    if (!revState) {
+      await runRevRange();
+      return;
+    }
+    try {
+      await runRevRangeInternal(revState.target, revState.startRev, revState.endRev);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(message);
+    }
+  }
+
+  async function setRevGroupMode() {
+    type ModePick = vscode.QuickPickItem & { value: RevGroupMode };
+    const items: ModePick[] = [
+      { label: "按一级目录分组", value: "dir1" },
+      { label: "按二级目录分组", value: "dir2" },
+      { label: "按提交记录分组", value: "commit" },
+    ];
+    const current = getRevGroupMode();
+    for (const item of items) {
+      item.picked = item.value === current;
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "选择提交范围分组方式",
+    });
+    if (!picked) return;
+    const config = vscode.workspace.getConfiguration("svnMergeAnnotator");
+    await config.update(
+      "revGroupMode",
+      picked.value,
+      vscode.ConfigurationTarget.Global
+    );
+    if (picked.value === "commit") {
+      try {
+        await ensureLogEntries();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        vscode.window.showErrorMessage(message);
+      }
+    }
+    refreshRevView();
+  }
+
+  async function setRevChangeFilter() {
+    type FilterPick = vscode.QuickPickItem & { value: RevChangeFilter };
+    const items: FilterPick[] = [
+      { label: "全部", value: "all" },
+      { label: "仅新增(A)", value: "A" },
+      { label: "仅修改(M/R/C)", value: "M" },
+      { label: "仅删除(D)", value: "D" },
+    ];
+    const current = getRevChangeFilter();
+    for (const item of items) {
+      item.picked = item.value === current;
+    }
+    const picked = await vscode.window.showQuickPick(items, {
+      placeHolder: "选择提交范围过滤条件",
+    });
+    if (!picked) return;
+    const config = vscode.workspace.getConfiguration("svnMergeAnnotator");
+    await config.update(
+      "revChangeFilter",
+      picked.value,
+      vscode.ConfigurationTarget.Global
+    );
+    refreshRevView();
+  }
+
+  async function openRevDiff(item?: RevFileItem) {
+    if (!item) return;
+    if (!revState) {
+      vscode.window.showErrorMessage("尚未运行提交范围变更");
+      return;
+    }
+    await openRevDiffForPath(
+      item.relPath,
+      revState.startRev,
+      revState.endRev
+    );
+  }
+
+  async function openRevDiffForPath(
+    relPath: string,
+    leftRev: string,
+    rightRev: string
+  ) {
+    const safeRelPath = relPath.replace(/\\/g, "/");
+    const left = vscode.Uri.from({
+      scheme: "svnrev",
+      path: `/${safeRelPath}`,
+      query: `rev=${encodeURIComponent(leftRev)}`,
+    });
+    const right = vscode.Uri.from({
+      scheme: "svnrev",
+      path: `/${safeRelPath}`,
+      query: `rev=${encodeURIComponent(rightRev)}`,
+    });
+    const title = `${safeRelPath} (${formatRevLabel(leftRev)} → ${formatRevLabel(
+      rightRev
+    )})`;
+    await vscode.commands.executeCommand("vscode.diff", left, right, title);
+  }
+
+  async function showRevFileHistory(item?: RevFileItem) {
+    if (!item) {
+      vscode.window.showErrorMessage("未选择文件");
+      return;
+    }
+    if (!revState) {
+      vscode.window.showErrorMessage("尚未运行提交范围变更");
+      return;
+    }
+    let entries: RevFileLogEntry[] = [];
+    try {
+      entries = await ensureFileLogEntries(item.relPath);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      vscode.window.showErrorMessage(message);
+      return;
+    }
+    if (!entries.length) {
+      vscode.window.showInformationMessage("该文件在范围内无提交记录");
+      return;
+    }
+    type RevPick = vscode.QuickPickItem & { index: number };
+    const picks: RevPick[] = entries.map((entry, index) => {
+      const message = formatLogMessage(entry.message);
+      const detailParts = [];
+      if (entry.author) detailParts.push(entry.author);
+      const dateText = formatLogDate(entry.date);
+      if (dateText) detailParts.push(dateText);
+      return {
+        label: `r${entry.revision}`,
+        description: message || "",
+        detail: detailParts.join(" · "),
+        index,
+      };
+    });
+    const picked = await vscode.window.showQuickPick(picks, {
+      placeHolder: "选择要查看的修订（将与前一条修订对比）",
+      matchOnDescription: true,
+      matchOnDetail: true,
+    });
+    if (!picked) return;
+    const current = entries[picked.index];
+    const previous = entries[picked.index + 1];
+    if (!previous) {
+      vscode.window.showInformationMessage("已是最早修订，无法与前一条对比");
+      return;
+    }
+    await openRevDiffForPath(item.relPath, previous.revision, current.revision);
+  }
+
   async function showLegend() {
     const lines = [
       "颜色图例:",
@@ -2799,6 +3701,24 @@ export function activate(context: vscode.ExtensionContext) {
     ),
     vscode.commands.registerCommand("svnMergeAnnotator.refreshNotes", refreshNotes),
     vscode.commands.registerCommand("svnMergeAnnotator.showHistory", showHistory),
+    vscode.commands.registerCommand("svnMergeAnnotator.runRevRange", runRevRange),
+    vscode.commands.registerCommand(
+      "svnMergeAnnotator.refreshRevChanges",
+      refreshRevChanges
+    ),
+    vscode.commands.registerCommand(
+      "svnMergeAnnotator.setRevGroupMode",
+      setRevGroupMode
+    ),
+    vscode.commands.registerCommand(
+      "svnMergeAnnotator.setRevChangeFilter",
+      setRevChangeFilter
+    ),
+    vscode.commands.registerCommand("svnMergeAnnotator.openRevDiff", openRevDiff),
+    vscode.commands.registerCommand(
+      "svnMergeAnnotator.showRevFileHistory",
+      showRevFileHistory
+    ),
     vscode.commands.registerCommand("svnMergeAnnotator.copyNote", copyNote),
     vscode.commands.registerCommand("svnMergeAnnotator.annotateBlock", annotateBlock),
     vscode.commands.registerCommand("svnMergeAnnotator.showLegend", showLegend),

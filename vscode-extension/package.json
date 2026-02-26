@@ -13,6 +13,7 @@
   "activationEvents": [
     "onView:svnMergeAnnotator.files",
     "onView:svnMergeAnnotator.notes",
+    "onView:svnMergeAnnotator.revChanges",
     "onCommand:svnMergeAnnotator.runAnalysis",
     "onCommand:svnMergeAnnotator.refresh",
     "onCommand:svnMergeAnnotator.loadById",
@@ -23,6 +24,12 @@
     "onCommand:svnMergeAnnotator.showLegend",
     "onCommand:svnMergeAnnotator.setAnnotationFilter",
     "onCommand:svnMergeAnnotator.setNotesGroupBy",
+    "onCommand:svnMergeAnnotator.runRevRange",
+    "onCommand:svnMergeAnnotator.refreshRevChanges",
+    "onCommand:svnMergeAnnotator.setRevGroupMode",
+    "onCommand:svnMergeAnnotator.setRevChangeFilter",
+    "onCommand:svnMergeAnnotator.openRevDiff",
+    "onCommand:svnMergeAnnotator.showRevFileHistory",
     "onCommand:svnMergeAnnotator.startBackend",
     "onCommand:svnMergeAnnotator.stopBackend",
     "onCommand:svnMergeAnnotator.restartBackend",
@@ -49,6 +56,10 @@
         {
           "id": "svnMergeAnnotator.notes",
           "name": "批注汇总"
+        },
+        {
+          "id": "svnMergeAnnotator.revChanges",
+          "name": "提交范围变更"
         }
       ]
     },
@@ -116,6 +127,36 @@
       {
         "command": "svnMergeAnnotator.showHistory",
         "title": "历史",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.runRevRange",
+        "title": "提交范围变更",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.refreshRevChanges",
+        "title": "刷新提交范围变更",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.setRevGroupMode",
+        "title": "提交范围分组",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.setRevChangeFilter",
+        "title": "提交范围过滤",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openRevDiff",
+        "title": "打开提交范围差异",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.showRevFileHistory",
+        "title": "查看范围内历史",
         "category": "SVN Merge Annotator"
       },
       {
@@ -259,6 +300,29 @@
           "type": "boolean",
           "default": true,
           "description": "是否输出调试日志到输出面板"
+        },
+        "svnMergeAnnotator.revGroupMode": {
+          "type": "string",
+          "default": "dir1",
+          "enum": ["dir1", "dir2", "commit"],
+          "enumDescriptions": [
+            "按一级目录分组",
+            "按二级目录分组",
+            "按提交记录分组"
+          ],
+          "description": "提交范围变更分组方式"
+        },
+        "svnMergeAnnotator.revChangeFilter": {
+          "type": "string",
+          "default": "all",
+          "enum": ["all", "A", "M", "D"],
+          "enumDescriptions": [
+            "全部",
+            "仅新增(A)",
+            "仅修改(M/R/C)",
+            "仅删除(D)"
+          ],
+          "description": "提交范围变更过滤条件"
         }
       }
     },
@@ -303,12 +367,37 @@
           "command": "svnMergeAnnotator.showLogs",
           "when": "view == svnMergeAnnotator.files",
           "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.runRevRange",
+          "when": "view == svnMergeAnnotator.revChanges",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.refreshRevChanges",
+          "when": "view == svnMergeAnnotator.revChanges",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.setRevGroupMode",
+          "when": "view == svnMergeAnnotator.revChanges",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.setRevChangeFilter",
+          "when": "view == svnMergeAnnotator.revChanges",
+          "group": "navigation"
         }
       ],
       "view/item/context": [
         {
           "command": "svnMergeAnnotator.copyNote",
           "when": "view == svnMergeAnnotator.notes && viewItem == note",
+          "group": "inline"
+        },
+        {
+          "command": "svnMergeAnnotator.showRevFileHistory",
+          "when": "view == svnMergeAnnotator.revChanges && viewItem == revFile",
           "group": "inline"
         }
       ]
