@@ -2,7 +2,7 @@
   "name": "svn-merge-annotator",
   "displayName": "SVN Merge Annotator",
   "description": "在 VSCode 内展示合并分析结果并进行批注",
-  "version": "0.1.0",
+  "version": "0.1.29",
   "publisher": "chemclin",
   "engines": {
     "vscode": "^1.86.0"
@@ -14,6 +14,7 @@
     "onView:svnMergeAnnotator.files",
     "onView:svnMergeAnnotator.notes",
     "onView:svnMergeAnnotator.revChanges",
+    "onView:svnMergeAnnotator.diffCompare",
     "onCommand:svnMergeAnnotator.runAnalysis",
     "onCommand:svnMergeAnnotator.refresh",
     "onCommand:svnMergeAnnotator.loadById",
@@ -28,8 +29,21 @@
     "onCommand:svnMergeAnnotator.refreshRevChanges",
     "onCommand:svnMergeAnnotator.setRevGroupMode",
     "onCommand:svnMergeAnnotator.setRevChangeFilter",
+    "onCommand:svnMergeAnnotator.compareDiffs",
+    "onCommand:svnMergeAnnotator.refreshDiffCompare",
     "onCommand:svnMergeAnnotator.openRevDiff",
+    "onCommand:svnMergeAnnotator.openRevMergeFile",
+    "onCommand:svnMergeAnnotator.applyRevChangeToMerge",
+    "onCommand:svnMergeAnnotator.openMergeAtDiffLine",
+    "onCommand:svnMergeAnnotator.openMergeByHunkContext",
+    "onCommand:svnMergeAnnotator.copyRevHunkDebugLog",
+    "onCommand:svnMergeAnnotator.applyRevHunkToMerge",
+    "onCommand:svnMergeAnnotator.openMergeBySelection",
+    "onCommand:svnMergeAnnotator.setRootPath",
+    "onCommand:svnMergeAnnotator.copyRootPath",
+    "onCommand:svnMergeAnnotator.clearRootPath",
     "onCommand:svnMergeAnnotator.showRevFileHistory",
+    "onCommand:svnMergeAnnotator.compareFileHistory",
     "onCommand:svnMergeAnnotator.startBackend",
     "onCommand:svnMergeAnnotator.stopBackend",
     "onCommand:svnMergeAnnotator.restartBackend",
@@ -38,6 +52,17 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "submenus": [
+      {
+        "id": "svnMergeAnnotator.diffActions",
+        "label": "待合并操作"
+      }
+      ,
+      {
+        "id": "svnMergeAnnotator.contextActions",
+        "label": "🔀 合并与对比"
+      }
+    ],
     "viewsContainers": {
       "activitybar": [
         {
@@ -60,6 +85,10 @@
         {
           "id": "svnMergeAnnotator.revChanges",
           "name": "提交范围变更"
+        },
+        {
+          "id": "svnMergeAnnotator.diffCompare",
+          "name": "差异对比"
         }
       ]
     },
@@ -67,6 +96,10 @@
       {
         "command": "svnMergeAnnotator.runAnalysis",
         "title": "分析",
+        "icon": {
+          "light": "resources/action-icons/light/run.svg",
+          "dark": "resources/action-icons/dark/run.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
@@ -87,16 +120,26 @@
       {
         "command": "svnMergeAnnotator.backendActions",
         "title": "后端操作面板",
+        "shortTitle": "后端",
+        "icon": {
+          "light": "resources/action-icons/light/settings.svg",
+          "dark": "resources/action-icons/dark/settings.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.openBackendLogs",
         "title": "打开后端日志",
+        "shortTitle": "日志",
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.refresh",
         "title": "刷新",
+        "icon": {
+          "light": "resources/action-icons/light/refresh.svg",
+          "dark": "resources/action-icons/dark/refresh.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
@@ -122,31 +165,78 @@
       {
         "command": "svnMergeAnnotator.refreshNotes",
         "title": "刷新批注",
+        "shortTitle": "刷新",
+        "icon": {
+          "light": "resources/action-icons/light/refresh.svg",
+          "dark": "resources/action-icons/dark/refresh.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.showHistory",
         "title": "历史",
+        "icon": {
+          "light": "resources/action-icons/light/history.svg",
+          "dark": "resources/action-icons/dark/history.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.runRevRange",
         "title": "提交范围变更",
+        "icon": {
+          "light": "resources/action-icons/light/run.svg",
+          "dark": "resources/action-icons/dark/run.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.refreshRevChanges",
         "title": "刷新提交范围变更",
+        "shortTitle": "刷新范围",
+        "icon": {
+          "light": "resources/action-icons/light/refresh.svg",
+          "dark": "resources/action-icons/dark/refresh.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.setRevGroupMode",
         "title": "提交范围分组",
+        "shortTitle": "分组",
+        "icon": {
+          "light": "resources/action-icons/light/group.svg",
+          "dark": "resources/action-icons/dark/group.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.setRevChangeFilter",
         "title": "提交范围过滤",
+        "shortTitle": "过滤",
+        "icon": {
+          "light": "resources/action-icons/light/filter.svg",
+          "dark": "resources/action-icons/dark/filter.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.compareDiffs",
+        "title": "差异对比",
+        "icon": {
+          "light": "resources/action-icons/light/compare.svg",
+          "dark": "resources/action-icons/dark/compare.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.refreshDiffCompare",
+        "title": "刷新差异对比",
+        "shortTitle": "刷新",
+        "icon": {
+          "light": "resources/action-icons/light/refresh.svg",
+          "dark": "resources/action-icons/dark/refresh.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
@@ -155,13 +245,112 @@
         "category": "SVN Merge Annotator"
       },
       {
+        "command": "svnMergeAnnotator.openRevMergeFile",
+        "title": "在待合并打开",
+        "shortTitle": "定位",
+        "icon": {
+          "light": "resources/action-icons/light/locate.svg",
+          "dark": "resources/action-icons/dark/locate.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.applyRevChangeToMerge",
+        "title": "一键变更到待合并",
+        "shortTitle": "整文件合并",
+        "icon": {
+          "light": "resources/action-icons/light/merge.svg",
+          "dark": "resources/action-icons/dark/merge.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openMergeAtDiffLine",
+        "title": "定位当前行",
+        "shortTitle": "当前行",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openMergeByHunkContext",
+        "title": "定位合并处",
+        "shortTitle": "定位",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.applyRevHunkToMerge",
+        "title": "合并此块",
+        "shortTitle": "合并",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.copyRevHunkDebugLog",
+        "title": "复制变更块日志",
+        "shortTitle": "复制日志",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.openMergeBySelection",
+        "title": "定位选中",
+        "shortTitle": "选中",
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.setRootPath",
+        "title": "设置路径",
+        "shortTitle": "设置",
+        "icon": {
+          "light": "resources/action-icons/light/folder.svg",
+          "dark": "resources/action-icons/dark/folder.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.copyRootPath",
+        "title": "复制路径",
+        "shortTitle": "复制",
+        "icon": {
+          "light": "resources/action-icons/light/copy.svg",
+          "dark": "resources/action-icons/dark/copy.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.clearRootPath",
+        "title": "清空路径",
+        "shortTitle": "清空",
+        "icon": {
+          "light": "resources/action-icons/light/trash.svg",
+          "dark": "resources/action-icons/dark/trash.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
         "command": "svnMergeAnnotator.showRevFileHistory",
         "title": "查看范围内历史",
+        "shortTitle": "历史",
+        "icon": {
+          "light": "resources/action-icons/light/history.svg",
+          "dark": "resources/action-icons/dark/history.svg"
+        },
+        "category": "SVN Merge Annotator"
+      },
+      {
+        "command": "svnMergeAnnotator.compareFileHistory",
+        "title": "文件历史双端对比",
+        "shortTitle": "双端对比",
+        "icon": {
+          "light": "resources/action-icons/light/compare.svg",
+          "dark": "resources/action-icons/dark/compare.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.copyNote",
         "title": "复制批注",
+        "icon": {
+          "light": "resources/action-icons/light/copy.svg",
+          "dark": "resources/action-icons/dark/copy.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
@@ -197,16 +386,29 @@
       {
         "command": "svnMergeAnnotator.setAnnotationFilter",
         "title": "批注筛选",
+        "icon": {
+          "light": "resources/action-icons/light/filter.svg",
+          "dark": "resources/action-icons/dark/filter.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.setNotesGroupBy",
         "title": "批注分组",
+        "shortTitle": "分组",
+        "icon": {
+          "light": "resources/action-icons/light/group.svg",
+          "dark": "resources/action-icons/dark/group.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
         "command": "svnMergeAnnotator.showLogs",
         "title": "日志",
+        "icon": {
+          "light": "resources/action-icons/light/logs.svg",
+          "dark": "resources/action-icons/dark/logs.svg"
+        },
         "category": "SVN Merge Annotator"
       },
       {
@@ -387,18 +589,104 @@
           "command": "svnMergeAnnotator.setRevChangeFilter",
           "when": "view == svnMergeAnnotator.revChanges",
           "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.compareDiffs",
+          "when": "view == svnMergeAnnotator.diffCompare",
+          "group": "navigation"
+        },
+        {
+          "command": "svnMergeAnnotator.refreshDiffCompare",
+          "when": "view == svnMergeAnnotator.diffCompare",
+          "group": "navigation"
         }
       ],
-      "view/item/context": [
+      "editor/context": [
+        {
+          "submenu": "svnMergeAnnotator.contextActions",
+          "when": "resourceScheme == svnrev",
+          "group": "navigation@1"
+        }
+      ],
+      "explorer/context": [
+        {
+          "submenu": "svnMergeAnnotator.contextActions",
+          "when": "resourceScheme == file",
+          "group": "navigation@9"
+        }
+      ],
+      "svnMergeAnnotator.contextActions": [
+        {
+          "command": "svnMergeAnnotator.openMergeAtDiffLine",
+          "when": "resourceScheme == svnrev",
+          "group": "navigation@1"
+        },
+        {
+          "command": "svnMergeAnnotator.openMergeBySelection",
+          "when": "resourceScheme == svnrev && editorHasSelection",
+          "group": "navigation@2"
+        },
+        {
+          "command": "svnMergeAnnotator.compareFileHistory",
+          "when": "resourceScheme == file",
+          "group": "navigation@3"
+        },
+        {
+          "command": "svnMergeAnnotator.setRootPath",
+          "when": "view == svnMergeAnnotator.files && viewItem == rootPath",
+          "group": "navigation@10"
+        },
+        {
+          "command": "svnMergeAnnotator.copyRootPath",
+          "when": "view == svnMergeAnnotator.files && viewItem == rootPath",
+          "group": "navigation@11"
+        },
+        {
+          "command": "svnMergeAnnotator.clearRootPath",
+          "when": "view == svnMergeAnnotator.files && viewItem == rootPath",
+          "group": "navigation@12"
+        },
         {
           "command": "svnMergeAnnotator.copyNote",
           "when": "view == svnMergeAnnotator.notes && viewItem == note",
-          "group": "inline"
+          "group": "navigation@20"
+        },
+        {
+          "command": "svnMergeAnnotator.openRevMergeFile",
+          "when": "view == svnMergeAnnotator.revChanges && viewItem == revFile",
+          "group": "navigation@30"
+        },
+        {
+          "command": "svnMergeAnnotator.applyRevChangeToMerge",
+          "when": "view == svnMergeAnnotator.revChanges && viewItem == revFile",
+          "group": "navigation@31"
         },
         {
           "command": "svnMergeAnnotator.showRevFileHistory",
           "when": "view == svnMergeAnnotator.revChanges && viewItem == revFile",
-          "group": "inline"
+          "group": "navigation@32"
+        },
+        {
+          "command": "svnMergeAnnotator.compareFileHistory",
+          "when": "view == svnMergeAnnotator.revChanges && viewItem == revFile",
+          "group": "navigation@33"
+        },
+        {
+          "command": "svnMergeAnnotator.compareFileHistory",
+          "when": "view == svnMergeAnnotator.files && viewItem == changed",
+          "group": "navigation@40"
+        },
+        {
+          "command": "svnMergeAnnotator.compareFileHistory",
+          "when": "view == svnMergeAnnotator.files && viewItem == unchanged",
+          "group": "navigation@41"
+        }
+      ],
+      "view/item/context": [
+        {
+          "submenu": "svnMergeAnnotator.contextActions",
+          "when": "(view == svnMergeAnnotator.files && (viewItem == rootPath || viewItem == changed || viewItem == unchanged)) || (view == svnMergeAnnotator.notes && viewItem == note) || (view == svnMergeAnnotator.revChanges && viewItem == revFile)",
+          "group": "navigation@1"
         }
       ]
     }
