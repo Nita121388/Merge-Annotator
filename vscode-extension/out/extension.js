@@ -1263,19 +1263,35 @@ function activate(context) {
     statusBar.text = `${statusBarLogo} $(question) ${statusBarTitle}: 未知`;
     statusBar.tooltip = `${statusBarPluginName}\n点击管理后端服务`;
     statusBar.show();
-    const filesView = vscode.window.createTreeView("svnMergeAnnotator.files", {
-        treeDataProvider: treeProvider,
-    });
-    const notesView = vscode.window.createTreeView("svnMergeAnnotator.notes", {
-        treeDataProvider: notesProvider,
-    });
+    function tryCreateTreeView(viewId, provider) {
+        try {
+            return vscode.window.createTreeView(viewId, {
+                treeDataProvider: provider,
+            });
+        }
+        catch (err) {
+            logMessage("INFO", "view_not_contributed_skip", {
+                viewId,
+                error: err instanceof Error ? err.message : String(err),
+            });
+            return undefined;
+        }
+    }
+    const filesView = tryCreateTreeView("svnMergeAnnotator.files", treeProvider);
+    const notesView = tryCreateTreeView("svnMergeAnnotator.notes", notesProvider);
     const revView = vscode.window.createTreeView("svnMergeAnnotator.revChanges", {
         treeDataProvider: revProvider,
     });
     const diffCompareView = vscode.window.createTreeView("svnMergeAnnotator.diffCompare", {
         treeDataProvider: diffCompareProvider,
     });
-    context.subscriptions.push(filesView, notesView, revView, diffCompareView, output, statusBar);
+    context.subscriptions.push(revView, diffCompareView, output, statusBar);
+    if (filesView) {
+        context.subscriptions.push(filesView);
+    }
+    if (notesView) {
+        context.subscriptions.push(notesView);
+    }
     refreshFilesTree();
     diffCompareProvider.refresh(diffCompareState);
     const diffLensEmitter = new vscode.EventEmitter();
@@ -1841,16 +1857,20 @@ function activate(context) {
         }
         return result;
     }
-    context.subscriptions.push(notesView.onDidChangeVisibility(async (event) => {
-        if (!event.visible)
-            return;
-        if (!state.analysisId)
-            return;
-        if (state.notesLoaded || state.notesLoading)
-            return;
-        await refreshNotes();
-    }));
+    if (notesView) {
+        context.subscriptions.push(notesView.onDidChangeVisibility(async (event) => {
+            if (!event.visible)
+                return;
+            if (!state.analysisId)
+                return;
+            if (state.notesLoaded || state.notesLoading)
+                return;
+            await refreshNotes();
+        }));
+    }
     function updateNotesBadge(total) {
+        if (!notesView)
+            return;
         notesView.badge =
             total > 0 ? { value: total, tooltip: `${total}条批注` } : undefined;
     }
@@ -2090,6 +2110,8 @@ function activate(context) {
         return detail.blocks.some((block) => hasRisk(block.ai_explain));
     }
     function updateFilesViewMessage() {
+        if (!filesView)
+            return;
         const annotationFilter = getAnnotationFilter();
         if (annotationFilter === "all") {
             filesView.message = undefined;
